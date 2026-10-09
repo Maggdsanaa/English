@@ -8,61 +8,55 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  extract:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Extract ZIP
         run: |
           set -e
-          test -f OcrPdfArabicEnglish.zip
-          mkdir -p extracted_contents
-          unzip -o OcrPdfArabicEnglish.zip -d extracted_contents
+          ZIP_FILE="OcrPdfArabicEnglish.zip"
+          test -f "$ZIP_FILE" || {
+            echo "ERROR: ZIP file not found in repository root"
+            exit 1
+          }
+          mkdir -p unzipped
+          unzip -o "$ZIP_FILE" -d unzipped
 
-      - name: Commit extracted files
-        if: github.event_name != 'pull_request'
+      - name: Locate Android project
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add extracted_contents
-          if ! git diff --cached --quiet; then
-            git commit -m "Extract ZIP contents"
-            git push
+          set -e
+          WRAPPER=$(find unzipped -type f -name gradlew -print -quit)
+
+          if [ -z "$WRAPPER" ]; then
+            echo "ERROR: gradlew not found inside ZIP"
+            echo "ZIP contents:"
+            find unzipped -maxdepth 3 -type f | head -100
+            exit 1
           fi
 
-  build:
-    needs: extract
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          PROJECT_DIR=$(dirname "$WRAPPER")
+          echo "Android project: $PROJECT_DIR"
 
-      - name: Download extracted files
-        uses: actions/checkout@v4
-        with:
-          path: extracted_contents
+          cp -a "$PROJECT_DIR"/. "$GITHUB_WORKSPACE"/
+          chmod +x gradlew
 
-      - uses: actions/setup-java@v4
+          test -f settings.gradle || test -f settings.gradle.kts
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Locate Android project
-        run: |
-          if [ -f extracted_contents/extracted_contents/gradlew ]; then
-            cp -a extracted_contents/extracted_contents/. .
-          elif [ -f extracted_contents/gradlew ]; then
-            cp -a extracted_contents/. .
-          else
-            echo "Gradle project not found"
-            exit 1
-          fi
-          chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
@@ -70,7 +64,8 @@ jobs:
       - name: Build APKs
         run: ./gradlew assembleDebug assembleRelease --stacktrace
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
         with:
           name: OcrPdfArabicEnglish-APK
           path: app/build/outputs/apk/**/*.apk
