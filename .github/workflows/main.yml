@@ -1,0 +1,34 @@
+
+name: Extract OcrPdfArabicEnglish ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP
+        run: |
+          set -e
+          ZIP_FILE="OcrPdfArabicEnglish.zip"
+          test -f "$ZIP_FILE"
+          mkdir -p extracted_contents
+          unzip -o "$ZIP_FILE" -d extracted_contents
+
+      - name: Commit extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extracted_contents
+          if ! git diff --cached --quiet; then
+            git commit -m "Extract OcrPdfArabicEnglish ZIP"
+            git push
+          fi
