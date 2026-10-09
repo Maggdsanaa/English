@@ -21,7 +21,7 @@ jobs:
       - name: Extract ZIP
         run: |
           set -e
-          ZIP_FILE="OcrPdfArabicEnglish.zip"
+          ZIP_FILE="OcrPdfArabic.zip"
           test -f "$ZIP_FILE" || {
             echo "ERROR: ZIP file not found in repository root"
             exit 1
