@@ -1,0 +1,77 @@
+
+name: Extract ZIP and Build APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract ZIP
+        run: |
+          set -e
+          test -f OcrPdfArabicEnglish.zip
+          mkdir -p extracted_contents
+          unzip -o OcrPdfArabicEnglish.zip -d extracted_contents
+
+      - name: Commit extracted files
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extracted_contents
+          if ! git diff --cached --quiet; then
+            git commit -m "Extract ZIP contents"
+            git push
+          fi
+
+  build:
+    needs: extract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download extracted files
+        uses: actions/checkout@v4
+        with:
+          path: extracted_contents
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Locate Android project
+        run: |
+          if [ -f extracted_contents/extracted_contents/gradlew ]; then
+            cp -a extracted_contents/extracted_contents/. .
+          elif [ -f extracted_contents/gradlew ]; then
+            cp -a extracted_contents/. .
+          else
+            echo "Gradle project not found"
+            exit 1
+          fi
+          chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Build APKs
+        run: ./gradlew assembleDebug assembleRelease --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OcrPdfArabicEnglish-APK
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
